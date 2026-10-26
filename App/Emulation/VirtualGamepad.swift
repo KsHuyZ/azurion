@@ -5,36 +5,92 @@
 import AzurionCore
 import SwiftUI
 
-/// On-screen controls, laid out for portrait where the core stacks both screens at the top.
-/// Empty space is not hit-testable, so touches there reach the 3DS touch screen underneath.
-/// TODO(phase 3): landscape layout, user-editable layouts, physical controllers (GameController).
+/// On-screen controls for portrait, in the space below the 3DS screens. Scales down uniformly
+/// when that space is shorter than the controls, e.g. on 5.8" iPhones like the iPhone 11 Pro.
+/// TODO(phase 3): user-editable layouts, physical controllers (GameController).
 struct VirtualGamepad: View {
     var body: some View {
-        VStack(spacing: 16) {
-            Spacer()
+        ScaledToFitHeight {
+            VStack(spacing: 16) {
+                HStack {
+                    GamepadButton(.l, title: "L", shape: .wide)
+                    Spacer()
+                    GamepadButton(.r, title: "R", shape: .wide)
+                }
 
-            HStack {
-                GamepadButton(.l, title: "L", shape: .wide)
-                Spacer()
-                GamepadButton(.r, title: "R", shape: .wide)
+                HStack(alignment: .bottom) {
+                    VStack(spacing: 20) {
+                        AnalogStick(stick: .circlePad)
+                        DPad()
+                    }
+                    Spacer()
+                    FaceButtons()
+                }
+
+                StartSelect()
             }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
+        }
+    }
+}
 
-            HStack(alignment: .bottom) {
-                VStack(spacing: 20) {
+/// One side of the on-screen controls for landscape, either side of the 3DS screens.
+struct GamepadColumn: View {
+    enum Side {
+        case left, right
+    }
+
+    let side: Side
+
+    var body: some View {
+        ScaledToFitHeight {
+            VStack(spacing: 16) {
+                switch side {
+                case .left:
+                    GamepadButton(.l, title: "L", shape: .wide)
                     AnalogStick(stick: .circlePad)
                     DPad()
+                case .right:
+                    GamepadButton(.r, title: "R", shape: .wide)
+                    FaceButtons()
+                    StartSelect()
                 }
-                Spacer()
-                FaceButtons()
             }
-
-            HStack(spacing: 24) {
-                GamepadButton(.select, title: "SELECT", shape: .small)
-                GamepadButton(.start, title: "START", shape: .small)
-            }
+            .padding(.bottom, 8)
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
+    }
+}
+
+/// Lays `content` out at full size, bottom-aligned, and scales it down uniformly when the space
+/// offered is shorter than that.
+private struct ScaledToFitHeight<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    /// Height of the content at full size.
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { proxy in
+            let scale = contentHeight > 0 ? min(1, proxy.size.height / contentHeight) : 1
+
+            // Laid out wider by 1/scale, so the content spans the full width once scaled down.
+            content
+                .frame(width: proxy.size.width / scale)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                .scaleEffect(scale, anchor: .bottom)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .bottom)
+        }
+    }
+}
+
+private struct StartSelect: View {
+    var body: some View {
+        HStack(spacing: 24) {
+            GamepadButton(.select, title: "SELECT", shape: .small)
+            GamepadButton(.start, title: "START", shape: .small)
+        }
     }
 }
 
@@ -100,7 +156,10 @@ struct GamepadButton: View {
     let title: String
     var shape: Style = .round
 
-    @State private var isPressed = false
+    /// A gesture state, not @State: SwiftUI resets it when the touch is cancelled (system
+    /// gestures, Notification Center, a call), where DragGesture.onEnded never fires and the
+    /// button would stay held until the view is recreated.
+    @GestureState private var isPressed = false
 
     init(_ button: EmulatorButton, title: String, shape: Style = .round) {
         self.button = button
@@ -117,16 +176,15 @@ struct GamepadButton: View {
             .contentShape(background)
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        guard !isPressed else { return }
-                        isPressed = true
-                        Emulator.shared.press(button)
-                    }
-                    .onEnded { _ in
-                        isPressed = false
-                        Emulator.shared.release(button)
-                    }
+                    .updating($isPressed) { _, pressed, _ in pressed = true }
             )
+            .onChange(of: isPressed) { _, pressed in
+                if pressed {
+                    Emulator.shared.press(button)
+                } else {
+                    Emulator.shared.release(button)
+                }
+            }
             .sensoryFeedback(.impact(weight: .light), trigger: isPressed) { _, pressed in pressed }
     }
 
@@ -143,7 +201,8 @@ struct AnalogStick: View {
     let stick: EmulatorStick
     var diameter: CGFloat = 120
 
-    @State private var knobOffset: CGSize = .zero
+    /// A gesture state so the stick recentres when the touch is cancelled, as in GamepadButton.
+    @GestureState private var knobOffset: CGSize = .zero
 
     var body: some View {
         let radius = diameter / 2
@@ -159,7 +218,7 @@ struct AnalogStick: View {
         .contentShape(Circle())
         .gesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { value in
+                .updating($knobOffset) { value, offset, _ in
                     var dx = value.location.x - radius
                     var dy = value.location.y - radius
                     let distance = (dx * dx + dy * dy).squareRoot()
@@ -167,14 +226,13 @@ struct AnalogStick: View {
                         dx *= radius / distance
                         dy *= radius / distance
                     }
-                    knobOffset = CGSize(width: dx, height: dy)
-                    // Screen y grows downwards, the 3DS circle pad's y grows upwards.
-                    Emulator.shared.setStick(stick, x: Float(dx / radius), y: Float(-dy / radius))
-                }
-                .onEnded { _ in
-                    knobOffset = .zero
-                    Emulator.shared.setStick(stick, x: 0, y: 0)
+                    offset = CGSize(width: dx, height: dy)
                 }
         )
+        .onChange(of: knobOffset) { _, offset in
+            // Screen y grows downwards, the 3DS circle pad's y grows upwards.
+            Emulator.shared.setStick(stick, x: Float(offset.width / radius),
+                                     y: Float(-offset.height / radius))
+        }
     }
 }

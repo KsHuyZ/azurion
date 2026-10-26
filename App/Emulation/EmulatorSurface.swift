@@ -20,7 +20,9 @@ final class EmulatorSurfaceView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
 
-        contentScaleFactor = traitCollection.displayScale
+        // The 3DS renders 400x240 per screen, so a 3x drawable only upscales further. Capping at
+        // 2x cuts the pixels presented every frame by more than half (iPhone 11 Pro is 3x).
+        contentScaleFactor = min(traitCollection.displayScale, 2)
         let size = CGSize(width: bounds.width * contentScaleFactor,
                           height: bounds.height * contentScaleFactor)
         guard size.width > 0, size.height > 0 else { return }

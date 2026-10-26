@@ -36,9 +36,10 @@ targets:
         # Documents shows up in the Files app, for importing games and exporting saves.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
-        # The on-screen controls are portrait-only for now.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIRequiresFullScreen: true
         GCSupportsControllerUserInteraction: true
     settings:

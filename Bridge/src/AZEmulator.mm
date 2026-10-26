@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include "common/common_paths.h"
 #include "common/file_util.h"
 #include "common/logging/backend.h"
 #include "common/logging/log.h"
@@ -19,6 +20,7 @@
 #include "common/settings.h"
 #include "core/core.h"
 #include "core/frontend/applets/default_applets.h"
+#include "core/hle/service/service.h"
 #include "core/loader/loader.h"
 #include "video_core/gpu.h"
 #include "video_core/rasterizer_interface.h"
@@ -61,12 +63,41 @@ AZExitReason ExitReasonFor(Core::System::ResultStatus status) {
     }
 }
 
+/// Deletes one title's Vulkan shader cache, including its load flag. Same files as
+/// "Delete Vulkan Shader Cache" in Azahar's Qt game list.
+void DeleteVulkanShaderCache(u64 program_id) {
+    const std::string vulkan_dir =
+        FileUtil::GetUserPath(FileUtil::UserPath::ShaderDir) + "vulkan" + DIR_SEP;
+    for (const std::string_view cache_type : {"vs", "fs", "gs", "pl"}) {
+        const std::string path = fmt::format("{}transferable{}{:016X}_{}.vkch", vulkan_dir,
+                                             DIR_SEP, program_id, cache_type);
+        if (FileUtil::Exists(path)) {
+            FileUtil::Delete(path);
+        }
+    }
+    const std::string prefix = fmt::format("{:016X}", program_id);
+    FileUtil::ForeachDirectoryEntry(
+        nullptr, vulkan_dir + "pipeline",
+        [&prefix](u64*, const std::string& directory, const std::string& virtual_name) {
+            if (virtual_name.starts_with(prefix)) {
+                FileUtil::Delete(directory + DIR_SEP + virtual_name);
+            }
+            return true;
+        });
+}
+
 /// Runs on the emulation thread until the game exits or `session.stop_requested` is set.
 Core::System::ResultStatus RunGame(Session& session, const std::string& path) {
     Core::System& system{Core::System::GetInstance()};
 
     Settings::values.graphics_api = Settings::GraphicsAPI::Vulkan;
+    // Compile new shaders off the emulation thread, so a first-seen effect costs a brief
+    // glitch instead of a frame stall. Stalls hurt most on older chips like the A13.
+    Settings::values.async_shader_compilation = true;
+    // Both JITs generate code at runtime. Without JIT, iOS kills the process the moment it
+    // jumps into such a page, so the PICA shader JIT must fall back along with the CPU one.
     Settings::values.use_cpu_jit = JitIOS::IsAvailable();
+    Settings::values.use_shader_jit = JitIOS::IsAvailable();
     if (!Settings::values.use_cpu_jit) {
         LOG_WARNING(Frontend, "JIT is not available, falling back to the interpreter");
     }
@@ -113,6 +144,17 @@ Core::System::ResultStatus RunGame(Session& session, const std::string& path) {
         }
 
         const Core::System::ResultStatus result{system.RunLoop()};
+        if (result == Core::System::ResultStatus::ErrorShaderCacheCrash) {
+            // A previous session died while loading this title's shader cache. That may be a
+            // driver crash on a cached shader, or just the app being killed mid-load. The core
+            // already skipped the cache for this boot, and the next RunLoop resets the status,
+            // so keep playing as Android does. Delete the cache so the next boot builds a clean
+            // one, instead of skipping it, and stuttering, forever.
+            LOG_WARNING(Frontend, "Shader cache of {:016X} crashed on its last load, deleting it",
+                        program_id);
+            DeleteVulkanShaderCache(program_id);
+            continue;
+        }
         if (result != Core::System::ResultStatus::Success) {
             return result;
         }
@@ -165,6 +207,18 @@ Core::System::ResultStatus RunGame(Session& session, const std::string& path) {
     Common::Log::Initialize();
     Common::Log::Start();
     InputIOS::Init();
+
+    // Both screens at the same scale, top over bottom (400x480 overall). The default portrait
+    // layout widens the bottom screen to full width, which on a 5.8" iPhone leaves no room for
+    // the controls below it. EmulationScreen sizes the surface to this aspect ratio. Set here,
+    // not in RunGame, because EmuWindow_iOS computes its first layout on the main thread.
+    Settings::values.portrait_layout_option = Settings::PortraitLayoutOption::PortraitOriginal;
+
+    // Every frontend fills this map from its config. Service::Init looks each system module up
+    // with .at(), so an empty map throws on boot. HLE for all of them, as on Android.
+    for (const auto& service_module : Service::service_module_map) {
+        Settings::values.lle_modules.emplace(service_module.name, false);
+    }
 
     LOG_INFO(Frontend, "Azurion configured, JIT {}",
              JitIOS::IsAvailable() ? "available" : "unavailable");
