@@ -9,20 +9,47 @@ struct EmulationScreen: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    /// Compact height means an iPhone in landscape.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var model = EmulationModel()
     /// Whether the game was running when the app left the foreground.
     @State private var resumeOnActive = false
 
+    /// Top screen (400x240) over bottom screen (320x240) at the same scale: the core's
+    /// PortraitOriginal layout, set in AZEmulator. The surface keeps this shape in landscape too,
+    /// so the core lays the screens out the same way in both orientations.
+    private static let screensAspectRatio: CGFloat = 400.0 / 480.0
+
     var body: some View {
+        let isLandscape = verticalSizeClass == .compact
+        // AnyLayout keeps the surface's identity across rotation. An if/else would recreate it,
+        // and with it the CAMetalLayer, which would boot the game a second time.
+        let layout = isLandscape
+            ? AnyLayout(HStackLayout(spacing: 0))
+            : AnyLayout(VStackLayout(spacing: 0))
+
         ZStack {
             Color.black.ignoresSafeArea()
 
-            EmulatorSurface { layer, size in
-                model.boot(game, layer: layer, drawableSize: size)
-            }
-            .ignoresSafeArea()
+            // Inside the safe area, so the notch does not cover the top screen, and next to the
+            // controls so they never cover the touch screen.
+            layout {
+                if isLandscape {
+                    GamepadColumn(side: .left)
+                }
 
-            VirtualGamepad()
+                EmulatorSurface { layer, size in
+                    model.boot(game, layer: layer, drawableSize: size)
+                }
+                .aspectRatio(Self.screensAspectRatio, contentMode: .fit)
+                .layoutPriority(1)
+
+                if isLandscape {
+                    GamepadColumn(side: .right)
+                } else {
+                    VirtualGamepad()
+                }
+            }
         }
         .overlay(alignment: .topTrailing) { menu }
         .statusBarHidden()
