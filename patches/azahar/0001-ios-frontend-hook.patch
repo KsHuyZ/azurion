@@ -1,0 +1,16 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index d474bedef..14795883d 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -230,6 +230,11 @@ if (ANDROID AND NOT ENABLE_LIBRETRO)
+     target_include_directories(citra-android PRIVATE android/app/src/main)
+ endif()
+ 
++# Out-of-tree iOS frontend bridge (Azurion).
++if (IOS AND DEFINED AZURION_BRIDGE_DIR)
++    add_subdirectory(${AZURION_BRIDGE_DIR} azurion_bridge)
++endif()
++
+ if (ENABLE_WEB_SERVICE)
+     add_subdirectory(web_service)
+ endif()

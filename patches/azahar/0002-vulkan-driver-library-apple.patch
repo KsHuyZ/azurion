@@ -1,0 +1,17 @@
+diff --git a/src/video_core/renderer_vulkan/vk_platform.cpp b/src/video_core/renderer_vulkan/vk_platform.cpp
+index 352aba458..5623696be 100644
+--- a/src/video_core/renderer_vulkan/vk_platform.cpp
++++ b/src/video_core/renderer_vulkan/vk_platform.cpp
+@@ -98,9 +98,10 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugReportCallback(vk::DebugReportFlagsEX
+ 
+ std::shared_ptr<Common::DynamicLibrary> OpenLibrary(
+     [[maybe_unused]] Frontend::GraphicsContext* context) {
+-#ifdef ANDROID
++#if defined(ANDROID) || defined(__APPLE__)
+     // Android may override the Vulkan driver from the frontend.
+-    if (auto library = context->GetDriverLibrary(); library) {
++    // iOS frontends link MoltenVK statically and hand over the image that contains it.
++    if (auto library = context ? context->GetDriverLibrary() : nullptr; library) {
+         return library;
+     }
+ #endif

@@ -1,0 +1,47 @@
+# XcodeGen spec. Azurion.xcodeproj is generated from this file: run `xcodegen generate`
+# (scripts/bootstrap.sh does it for you) and never edit the .xcodeproj by hand.
+name: Azurion
+
+options:
+  bundleIdPrefix: org.azurion
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    # Set your Apple Developer team ID here, or pick it in Xcode under Signing & Capabilities.
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  Azurion:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      # Built by scripts/build-core.sh
+      - framework: build/AzurionCore.xcframework
+        embed: true
+        codeSign: true
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Azurion
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        # Documents shows up in the Files app, for importing games and exporting saves.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        # The on-screen controls are portrait-only for now.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: true
+        GCSupportsControllerUserInteraction: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.azurion.app
+        TARGETED_DEVICE_FAMILY: "1"
