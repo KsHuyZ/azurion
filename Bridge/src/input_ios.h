@@ -4,9 +4,9 @@
 
 #pragma once
 
-/// Feeds touch controls and game controllers into the core.
-/// Buttons go through Azahar's built-in keyboard engine (key code = NativeButton index);
-/// sticks go through a small analog engine of our own, since the keyboard one is digital only.
+/// Feeds touch controls and game controllers into the core, through two small input engines of
+/// our own: one for buttons, which keeps a quick tap pressed until the game has seen it, and one
+/// for sticks, since Azahar's keyboard engine is digital only.
 namespace InputIOS {
 
 /// Registers the input engines and binds the core's input profile to them.

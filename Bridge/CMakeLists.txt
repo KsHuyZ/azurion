@@ -51,6 +51,8 @@ target_link_libraries(AzurionCore PRIVATE
     input_common
     network
     video_core
+    # Set by Azahar's root CMakeLists: AVFoundation, IOSurface and the static MoltenVK.
+    ${PLATFORM_LIBRARIES}
     "-framework Foundation"
     "-framework UIKit"
     "-framework QuartzCore"
